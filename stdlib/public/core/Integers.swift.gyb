@@ -82,6 +82,7 @@ public typealias UIntMax = ${UIntMax}
 extension ExpressibleByIntegerLiteral
   where Self : _ExpressibleByBuiltinIntegerLiteral {
   @_transparent
+  @compilerEvaluable
   public init(integerLiteral value: Self) {
     self = value
   }
@@ -1149,6 +1150,7 @@ extension ${Protocol} {
 %     callLabel = x.firstArg + ': ' if not x.firstArg == '_' else ''
 ${operatorComment(x.operator, False)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}(_ lhs: Self, _ rhs: Self) -> Self {
     var lhs = lhs
     lhs ${x.operator}= rhs
@@ -1221,6 +1223,7 @@ extension SignedNumeric {
   ///
   /// - Returns: The additive inverse of the argument.
   @_transparent
+  @compilerEvaluable
   public static prefix func - (_ operand: Self) -> Self {
     var result = operand
     result.negate()
@@ -1236,6 +1239,7 @@ extension SignedNumeric {
   ///     x.negate()
   ///     // x == -21
   @_transparent
+  @compilerEvaluable
   public mutating func negate() {
     self = 0 - self
   }
@@ -1247,6 +1251,7 @@ extension SignedNumeric {
 /// - Parameter x: A signed number.
 /// - Returns: The absolute value of `x`.
 @_transparent
+@compilerEvaluable
 public func abs<T : SignedNumeric>(_ x: T) -> T
   where T.Magnitude == T {
   return x.magnitude
@@ -1266,6 +1271,7 @@ public func abs<T : SignedNumeric>(_ x: T) -> T
 /// - Parameter x: A signed number.
 /// - Returns: The absolute value of `x`.
 @inlinable // FIXME(sil-serialize-all)
+@compilerEvaluable
 public func abs<T : SignedNumeric & Comparable>(_ x: T) -> T {
   return x < 0 ? -x : x
 }
@@ -1283,6 +1289,7 @@ extension Numeric {
   ///
   /// - Returns: The given argument without any changes.
   @_transparent
+  @compilerEvaluable
   public static prefix func + (x: Self) -> Self {
     return x
   }
@@ -1689,6 +1696,7 @@ ${assignmentOperatorComment(x.nonMaskingOperator, False)}
 extension BinaryInteger {
   /// Creates a new value equal to zero.
   @_transparent
+  @compilerEvaluable
   public init() {
     self = 0
   }
@@ -1699,6 +1707,7 @@ extension BinaryInteger {
   /// - Returns: The sign of this number, expressed as an integer of the same
   ///   type.
   @_transparent
+  @compilerEvaluable
   public func signum() -> Self {
     return (self > (0 as Self) ? 1 : 0) - (self < (0 as Self) ? 1 : 0)
   }
@@ -1748,6 +1757,7 @@ extension BinaryInteger {
   /// - Returns: A tuple containing the quotient and remainder of this value
   ///   divided by `rhs`.
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public func quotientAndRemainder(dividingBy rhs: Self)
     -> (quotient: Self, remainder: Self) {
     return (self / rhs, self % rhs)
@@ -1758,6 +1768,7 @@ extension BinaryInteger {
   // Homogeneous
 ${operatorComment(x.operator, False)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator} (lhs: Self, rhs: Self) -> Self {
     var lhs = lhs
     lhs ${x.operator}= rhs
@@ -1771,6 +1782,7 @@ ${operatorComment(x.operator, False)}
 ${operatorComment(x.nonMaskingOperator, False)}
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inlinable
+  @compilerEvaluable
   public static func ${x.nonMaskingOperator}<RHS: BinaryInteger>(
     _ lhs: Self, _ rhs: RHS
   ) -> Self {
@@ -1873,6 +1885,7 @@ extension BinaryInteger {
   /// - Returns: The distance from this value to `other`.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public func distance(to other: Self) -> Int {
     if !Self.isSigned {
       if self > other {
@@ -1913,6 +1926,7 @@ extension BinaryInteger {
   /// - Returns: A value that is offset from this value by `n`.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public func advanced(by n: Int) -> Self {
     if !Self.isSigned {
       return n < (0 as Int)
@@ -1939,6 +1953,7 @@ extension Int {
   /// - Parameter other: The value to calculate the distance to.
   /// - Returns: The distance from this value to `other`.
   @_transparent
+  @compilerEvaluable
   public func distance(to other: Int) -> Int {
     return other - self
   }
@@ -1956,6 +1971,7 @@ extension Int {
   /// - Parameter n: The distance to advance this value.
   /// - Returns: A value that is offset from this value by `n`.
   @_transparent
+  @compilerEvaluable
   public func advanced(by n: Int) -> Int {
     return self + n
   }
@@ -1987,6 +2003,7 @@ extension BinaryInteger {
   ///   - rhs: Another integer to compare.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func == <
     Other : BinaryInteger
   >(lhs: Self, rhs: Other) -> Bool {
@@ -2044,6 +2061,7 @@ extension BinaryInteger {
   ///   - lhs: An integer to compare.
   ///   - rhs: Another integer to compare.
   @_transparent
+  @compilerEvaluable
   public static func != <
     Other : BinaryInteger
   >(lhs: Self, rhs: Other) -> Bool {
@@ -2062,6 +2080,7 @@ extension BinaryInteger {
   ///   - rhs: Another integer to compare.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func < <Other : BinaryInteger>(lhs: Self, rhs: Other) -> Bool {
     let lhsNegative = Self.isSigned && lhs < (0 as Self)
     let rhsNegative = Other.isSigned && rhs < (0 as Other)
@@ -2106,6 +2125,7 @@ extension BinaryInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_transparent
   //@inline(__always)
+  @compilerEvaluable
   public static func <= <Other : BinaryInteger>(lhs: Self, rhs: Other) -> Bool {
     return !(rhs < lhs)
   }
@@ -2123,6 +2143,7 @@ extension BinaryInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_transparent
   //@inline(__always)
+  @compilerEvaluable
   public static func >= <Other : BinaryInteger>(lhs: Self, rhs: Other) -> Bool {
     return !(lhs < rhs)
   }
@@ -2140,6 +2161,7 @@ extension BinaryInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_transparent
   //@inline(__always)
+  @compilerEvaluable
   public static func > <Other : BinaryInteger>(lhs: Self, rhs: Other) -> Bool {
     return rhs < lhs
   }
@@ -2163,24 +2185,28 @@ extension BinaryInteger {
 
 extension BinaryInteger {
   @_transparent
+  @compilerEvaluable
   public static func != (lhs: Self, rhs: Self) -> Bool {
     return !(lhs == rhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func <= (lhs: Self, rhs: Self) -> Bool {
     return !(rhs < lhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func >= (lhs: Self, rhs: Self) -> Bool {
     return !(lhs < rhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func > (lhs: Self, rhs: Self) -> Bool {
     return rhs < lhs
   }
@@ -2415,6 +2441,7 @@ extension FixedWidthInteger {
   public var bitWidth: Int { return Self.bitWidth }
 
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public func _binaryLogarithm() -> Self {
     _precondition(self > (0 as Self))
     return Self(Self.bitWidth &- (leadingZeroBitCount &+ 1))
@@ -2426,6 +2453,7 @@ extension FixedWidthInteger {
   /// - Parameter value: A value to use as the little-endian representation of
   ///   the new integer.
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public init(littleEndian value: Self) {
 #if _endian(little)
     self = value
@@ -2440,6 +2468,7 @@ extension FixedWidthInteger {
   /// - Parameter value: A value to use as the big-endian representation of the
   ///   new integer.
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public init(bigEndian value: Self) {
 #if _endian(big)
     self = value
@@ -2483,6 +2512,7 @@ ${operatorComment(x.operator, False)}
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator} (lhs: Self, rhs: Self) -> Self {
     var lhs = lhs
     lhs ${x.operator}= rhs
@@ -2494,6 +2524,7 @@ ${operatorComment(x.operator, False)}
 ${operatorComment(x.operator, False)}
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inlinable
+  @compilerEvaluable
   public static func ${x.operator} <
     Other : BinaryInteger
   >(lhs: Self, rhs: Other) -> Self {
@@ -2505,6 +2536,7 @@ ${assignmentOperatorComment(x.operator, False)}
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}= <
     Other : BinaryInteger
   >(lhs: inout Self, rhs: Other) {
@@ -2634,6 +2666,7 @@ extension FixedWidthInteger {
   ///
   /// - Complexity: O(1).
   @_transparent
+  @compilerEvaluable
   public static prefix func ~ (x: Self) -> Self {
     return 0 &- x &- 1
   }
@@ -2648,6 +2681,7 @@ ${operatorComment(x.nonMaskingOperator, True)}
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${x.nonMaskingOperator} <
     Other : BinaryInteger
   >(lhs: Self, rhs: Other) -> Self {
@@ -2659,6 +2693,7 @@ ${operatorComment(x.nonMaskingOperator, True)}
   @inlinable // FIXME(sil-serialize-all)
   @_transparent
   @_semantics("optimize.sil.specialize.generic.partial.never")
+  @compilerEvaluable
   public static func ${x.nonMaskingOperator}= <
     Other : BinaryInteger
   >(lhs: inout Self, rhs: Other) {
@@ -2666,6 +2701,7 @@ ${operatorComment(x.nonMaskingOperator, True)}
   }
 
   @_transparent
+  @compilerEvaluable
   public static func ${x.helper}Generic <
     Other : BinaryInteger
   >(_ lhs: inout Self, _ rhs: Other) {
@@ -2679,6 +2715,7 @@ ${operatorComment(x.nonMaskingOperator, True)}
 %   isRightShift = '>' in x.operator
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func ${x.helper}(_ lhs: Self, _ rhs: Int) -> Self {
     let overshiftR = Self.isSigned ? lhs &>> (Self.bitWidth - 1) : 0
     let overshiftL: Self = 0
@@ -2810,6 +2847,7 @@ extension FixedWidthInteger {
   /// - Parameter source: An integer to convert to this type.
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
+  @compilerEvaluable
   public init<Other : BinaryInteger>(clamping source: Other) {
     if _slowPath(source < Self.min) {
       self = Self.min
@@ -2827,6 +2865,7 @@ extension FixedWidthInteger {
 #if false
 ${assignmentOperatorComment(x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}=(_ lhs: inout Self, _ rhs: Self) {
     let (result, overflow) = lhs.${x.name}ReportingOverflow(${callLabel}rhs)
     _precondition(!overflow, "Overflow in ${x.operator}=")
@@ -2837,6 +2876,7 @@ ${assignmentOperatorComment(x.operator, True)}
 
 ${unsafeOperationComment(x.operator)}
   @_transparent
+  @compilerEvaluable
   public func unsafe${capitalize(x.name)}(${x.firstArg} other: Self) -> Self {
     let (result, overflow) = self.${x.name}ReportingOverflow(${callLabel}other)
 
@@ -2890,6 +2930,7 @@ ${unsafeOperationComment(x.operator)}
   /// - Parameter source: An integer to convert to this type.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public init<T : BinaryInteger>(truncatingIfNeeded source: T) {
     if Self.bitWidth <= ${word_bits} {
       self = Self.init(_truncatingBits: source._lowWord)
@@ -2922,6 +2963,7 @@ ${unsafeOperationComment(x.operator)}
 %   if x.kind != '/':
 ${operatorComment('&' + x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func &${x.operator} (lhs: Self, rhs: Self) -> Self {
     return lhs.${x.name}ReportingOverflow(${callLabel}rhs).partialValue
   }
@@ -3006,6 +3048,7 @@ extension UnsignedInteger where Self : FixedWidthInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(__always)
+  @compilerEvaluable
   public init<T : BinaryInteger>(_ source: T) {
     // This check is potentially removable by the optimizer
     if T.isSigned {
@@ -3037,6 +3080,7 @@ extension UnsignedInteger where Self : FixedWidthInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(__always)
+  @compilerEvaluable
   public init?<T : BinaryInteger>(exactly source: T) {
     // This check is potentially removable by the optimizer
     if T.isSigned && source < (0 as T) {
@@ -3111,6 +3155,7 @@ extension SignedInteger where Self : FixedWidthInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(__always)
+  @compilerEvaluable
   public init<T : BinaryInteger>(_ source: T) {
     // This check is potentially removable by the optimizer
     if T.isSigned && source.bitWidth > Self.bitWidth {
@@ -3144,6 +3189,7 @@ extension SignedInteger where Self : FixedWidthInteger {
   @inlinable // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(__always)
+  @compilerEvaluable
   public init?<T : BinaryInteger>(exactly source: T) {
     // This check is potentially removable by the optimizer
     if T.isSigned && source.bitWidth > Self.bitWidth && source < Self.min {
@@ -3213,6 +3259,7 @@ public struct ${Self}
 
 
   @_transparent
+  @compilerEvaluable
   public init(_builtinIntegerLiteral x: _MaxBuiltinIntegerType) {
     _value = Builtin.s_to_${u}_checked_trunc_${IntLiteral}_${BuiltinName}(x).0
   }
@@ -3228,6 +3275,7 @@ public struct ${Self}
   /// - Parameter x: A value to use as the source of the new instance's binary
   ///   representation.
   @_transparent
+  @compilerEvaluable
   public init(bitPattern x: ${OtherSelf}) {
     _value = x._value
   }
@@ -3236,6 +3284,7 @@ public struct ${Self}
 %     Floating = {32 : 'Float', 64 : 'Double'}[bits]
   @available(*, unavailable,
     message: "Please use ${Self}(bitPattern: ${OtherSelf}) in combination with ${Floating}.bitPattern property.")
+  @compilerEvaluable
   public init(bitPattern x: ${Floating}) {
     Builtin.unreachable()
   }
@@ -3309,11 +3358,13 @@ public struct ${Self}
 %   end
 
   @_transparent
+  @compilerEvaluable
   public static func == (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return Bool(Builtin.cmp_eq_Int${bits}(lhs._value, rhs._value))
   }
 
   @_transparent
+  @compilerEvaluable
   public static func < (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return Bool(Builtin.cmp_${u}lt_Int${bits}(lhs._value, rhs._value))
   }
@@ -3322,6 +3373,7 @@ public struct ${Self}
 %       for x in binaryArithmetic['Numeric'] + binaryArithmetic["BinaryInteger"][:1]:
 ${assignmentOperatorComment(x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}=(_ lhs: inout ${Self}, _ rhs: ${Self}) {
 %   if x.kind == '/':
     // No LLVM primitives for checking overflow of division operations, so we
@@ -3355,6 +3407,7 @@ ${assignmentOperatorComment(x.operator, True)}
 
 ${overflowOperationComment(x.operator)}
   @_transparent
+  @compilerEvaluable
   public func ${x.name}ReportingOverflow(
     ${x.firstArg} other: ${Self}
   ) -> (partialValue: ${Self}, overflow: Bool) {
@@ -3390,6 +3443,7 @@ ${overflowOperationComment(x.operator)}
 
 ${assignmentOperatorComment('%', True)}
   @_transparent
+  @compilerEvaluable
   public static func %=(_ lhs: inout ${Self}, _ rhs: ${Self}) {
     // No LLVM primitives for checking overflow of division operations, so we
     // check manually.
@@ -3411,6 +3465,7 @@ ${assignmentOperatorComment('%', True)}
   }
 
   @_transparent
+  @compilerEvaluable
   public init(_ _value: Builtin.Int${bits}) {
     self._value = _value
   }
@@ -3418,6 +3473,7 @@ ${assignmentOperatorComment('%', True)}
 % for x in binaryBitwise:
 ${assignmentOperatorComment(x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}=(_ lhs: inout ${Self}, _ rhs: ${Self}) {
     lhs = ${Self}(Builtin.${x.llvmName}_Int${bits}(lhs._value, rhs._value))
   }
@@ -3427,6 +3483,7 @@ ${assignmentOperatorComment(x.operator, True)}
 
 ${assignmentOperatorComment(x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}=(_ lhs: inout ${Self}, _ rhs: ${Self}) {
     let rhs_ = rhs & ${bits - 1}
     lhs = ${Self}(
@@ -3505,6 +3562,7 @@ ${assignmentOperatorComment(x.operator, True)}
     internal var _value: ${Self}
 
     @inlinable // FIXME(sil-serialize-all)
+    @compilerEvaluable
     public init(_ value: ${Self}) {
       self._value = value
     }
@@ -3524,12 +3582,15 @@ ${assignmentOperatorComment(x.operator, True)}
     public var indices: Indices { return startIndex ..< endIndex }
 
     @_transparent
+    @compilerEvaluable
     public func index(after i: Int) -> Int { return i + 1 }
 
     @_transparent
+    @compilerEvaluable
     public func index(before i: Int) -> Int { return i - 1 }
 
     @inlinable // FIXME(sil-serialize-all)
+    @compilerEvaluable
     public subscript(position: Int) -> UInt {
       get {
         _precondition(position >= 0, "Negative word index")
@@ -3563,6 +3624,7 @@ ${assignmentOperatorComment(x.operator, True)}
   }
 
   @_transparent
+  @compilerEvaluable
   public // transparent
   init(_truncatingBits bits: UInt) {
     % truncOrExt = 'zext' if bits > word_bits else 'trunc'
@@ -3627,6 +3689,7 @@ ${assignmentOperatorComment(x.operator, True)}
   /// - Returns: A tuple containing the high and low parts of the result of
   ///   multiplying this value and `other`.
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public func multipliedFullWidth(by other: ${Self})
     -> (high: ${Self}, low: ${Self}.Magnitude) {
     // FIXME(integers): tests
@@ -3708,6 +3771,7 @@ ${assignmentOperatorComment(x.operator, True)}
 
 % if self_type.is_word:
   @_transparent
+  @compilerEvaluable
   public // @testable
   init(_ _v: Builtin.Word) {
 % if BuiltinName == 'Int32':
@@ -3730,6 +3794,7 @@ ${assignmentOperatorComment(x.operator, True)}
 
   @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 4.0, message: "Use initializers instead")
+  @compilerEvaluable
   public func to${U}IntMax() -> ${U}Int64 {
     return numericCast(self)
   }
@@ -3749,6 +3814,7 @@ ${assignmentOperatorComment(x.operator, True)}
   ///   type.
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public func signum() -> ${Self} {
     let isPositive = ${Self}(Builtin.zext_Int1_Int${bits}(
       (self > (0 as ${Self}))._value))
@@ -3816,6 +3882,7 @@ extension ${Self} {
   @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 4.0, renamed: "init(truncatingIfNeeded:)")
   @_transparent
+  @compilerEvaluable
   public init(truncatingBitPattern source: ${Src}) {
     let src = source._value
 %     if self_type.bits == src_type.bits:
@@ -3840,6 +3907,7 @@ extension ${Self} {
 
 ${operatorComment(x.operator, True)}
   @_transparent
+  @compilerEvaluable
   public static func ${x.operator}(_ lhs: ${Self}, _ rhs: ${Self}) -> ${Self} {
     var lhs = lhs
     lhs ${x.operator}= rhs
@@ -3855,6 +3923,7 @@ ${operatorComment(x.operator, True)}
   @available(swift, obsoleted: 4)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${op.nonMaskingOperator}(
     lhs: ${Self}, rhs: ${Self}
   ) -> ${Self} {
@@ -3868,6 +3937,7 @@ ${assignmentOperatorComment(x.operator, True)}
   @available(swift, obsoleted: 4)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${op.nonMaskingOperator}=(
     lhs: inout ${Self}, rhs: ${Self}
   ) {
@@ -3877,24 +3947,28 @@ ${assignmentOperatorComment(x.operator, True)}
 %   end
 
   @_transparent
+  @compilerEvaluable
   public static func != (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return !(lhs == rhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func <= (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return !(rhs < lhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func >= (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return !(lhs < rhs)
   }
 
   @inlinable // FIXME(sil-serialize-all)
   @inline(__always)
+  @compilerEvaluable
   public static func > (lhs: ${Self}, rhs: ${Self}) -> Bool {
     return rhs < lhs
   }
@@ -3906,6 +3980,7 @@ ${assignmentOperatorComment(x.operator, True)}
 /// Returns the argument and specifies that the value is not negative.
 /// It has only an effect if the argument is a load or call.
 @_transparent
+@compilerEvaluable
 public func _assumeNonNegative(_ x: ${Self}) -> ${Self} {
   _sanityCheck(x >= (0 as ${Self}))
   return ${Self}(Builtin.assumeNonNegative_${BuiltinName}(x._value))
@@ -3940,12 +4015,14 @@ public func _assumeNonNegative(_ x: ${Self}) -> ${Self} {
 /// - Parameter x: The integer to convert, and instance of type `T`.
 /// - Returns: The value of `x` converted to type `U`.
 @_transparent
+@compilerEvaluable
 public func numericCast<T : BinaryInteger, U : BinaryInteger>(_ x: T) -> U {
   return U(x)
 }
 
 // FIXME(integers): switch to using `FixedWidthInteger.unsafeAdding`
 @inlinable // FIXME(sil-serialize-all)
+@compilerEvaluable
 internal func _unsafePlus(_ lhs: Int, _ rhs: Int) -> Int {
 #if INTERNAL_CHECKS_ENABLED
   return lhs + rhs
@@ -3956,6 +4033,7 @@ internal func _unsafePlus(_ lhs: Int, _ rhs: Int) -> Int {
 
 // FIXME(integers): switch to using `FixedWidthInteger.unsafeSubtracting`
 @inlinable // FIXME(sil-serialize-all)
+@compilerEvaluable
 internal func _unsafeMinus(_ lhs: Int, _ rhs: Int) -> Int {
 #if INTERNAL_CHECKS_ENABLED
   return lhs - rhs
@@ -3978,6 +4056,7 @@ extension FixedWidthInteger {
   @available(swift, obsoleted: 4)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${op.nonMaskingOperator}(
     lhs: Self, rhs: Self
   ) -> Self {
@@ -3990,6 +4069,7 @@ extension FixedWidthInteger {
   @available(swift, obsoleted: 4)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @_transparent
+  @compilerEvaluable
   public static func ${op.nonMaskingOperator}=(
     lhs: inout Self, rhs: Self
   ) {
@@ -4015,6 +4095,7 @@ extension FixedWidthInteger {
   @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 4, message: "Use ${newPrefix}ReportingOverflow(${argLabel or '_:'}) instead.")
   @_transparent
+  @compilerEvaluable
   public static func ${oldPrefix}WithOverflow(
     _ lhs: Self, _ rhs: Self
   ) -> (Self, overflow: Bool) {
@@ -4031,6 +4112,7 @@ extension BinaryInteger {
   @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 3.2,
     message: "Please use FixedWidthInteger protocol as a generic constraint and ${newPrefix}ReportingOverflow(${argLabel or '_:'}) method instead.")
+  @compilerEvaluable
   public static func ${oldPrefix}WithOverflow(
     _ lhs: Self, _ rhs: Self
   ) -> (Self, overflow: Bool) {
@@ -4054,6 +4136,7 @@ extension BinaryInteger {
 extension SignedInteger {
 %   for (op, helper, _) in maskingOpsSwift3:
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public static func ${helper}(_ lhs: Self, _ rhs: Self) -> Self {
     fatalError("Should be overridden in a more specific type")
   }
@@ -4061,6 +4144,7 @@ extension SignedInteger {
   @inlinable // FIXME(sil-serialize-all)
   @available(swift, obsoleted: 4.0,
       message: "Please use 'FixedWidthInteger' instead of 'SignedInteger' to get '${op}' in generic code.")
+  @compilerEvaluable
   public static func ${op} (lhs: Self, rhs: Self) -> Self {
     return ${helper}(lhs, rhs)
   }
@@ -4072,10 +4156,12 @@ extension SignedInteger where Self : FixedWidthInteger {
   // This overload is supposed to break the ambiguity between the
   // implementations on SignedInteger and FixedWidthInteger
   @inlinable // FIXME(sil-serialize-all)
+  @compilerEvaluable
   public static func ${op} (lhs: Self, rhs: Self) -> Self {
     return ${helper}(lhs, rhs)
   }
   @_transparent
+  @compilerEvaluable
   public static func ${helper}(_ lhs: Self, _ rhs: Self) -> Self {
     return lhs.${action}ReportingOverflow(rhs).partialValue
   }

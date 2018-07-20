@@ -17,6 +17,8 @@
 #ifndef SWIFT_SIL_INSTRUCTION_H
 #define SWIFT_SIL_INSTRUCTION_H
 
+// SWIFT_ENABLE_TENSORFLOW
+#include "swift/AST/AutoDiff.h"
 #include "swift/AST/Builtins.h"
 #include "swift/AST/Decl.h"
 #include "swift/AST/GenericSignature.h"
@@ -51,6 +53,10 @@ class MultipleValueInstruction;
 class MultipleValueInstructionResult;
 class DestructureTupleInst;
 class DestructureStructInst;
+// SWIFT_ENABLE_TENSORFLOW
+class SymbolicValue;
+struct GraphOperationAttribute;
+class GraphOperationInst;
 class NonValueInstruction;
 class SILBasicBlock;
 class SILBuilder;
@@ -2894,6 +2900,7 @@ class StringLiteralInst final
 
 public:
   enum class Encoding {
+    Bytes,   // SWIFT_ENABLE_TENSORFLOW
     UTF8,
     UTF16,
     /// UTF-8 encoding of an Objective-C selector.
@@ -7597,6 +7604,8 @@ public:
 
   bool isCalleeThin() const {
     switch (getSubstCalleeType()->getRepresentation()) {
+    // SWIFT_ENABLE_TENSORFLOW
+    case SILFunctionTypeRepresentation::TensorFlow:
     case SILFunctionTypeRepresentation::CFunctionPointer:
     case SILFunctionTypeRepresentation::Thin:
     case SILFunctionTypeRepresentation::Method:
@@ -7823,6 +7832,80 @@ public:
   }
 };
 
+/// SWIFT_ENABLE_TENSORFLOW
+/// GradientInst - Represents the gradient of another SIL function.
+class GradientInst final
+  : public InstructionBase<SILInstructionKind::GradientInst,
+                           SingleValueInstruction> {
+private:
+  friend SILBuilder;
+  /// The reverse-mode AD indices.
+  SILReverseAutoDiffIndices Indices;
+  /// Gradient options.
+  SILGradientOptions Options;
+  /// Space for 1 operand: the original function to be differentiated.
+  FixedOperandList<1> Operands;
+
+  GradientInst(SILModule &module, SILDebugLocation debugLoc, SILValue original,
+               SILReverseAutoDiffIndices indices, SILGradientOptions options);
+
+  /// A utility function for computing the SIL type of the gradient of a
+  /// function, given the specified differentiation configuration options.
+  static SILType getGradientSILType(SILModule &module, SILValue original,
+                                    SILReverseAutoDiffIndices indices,
+                                    SILGradientOptions options);
+
+public:
+  ~GradientInst() {};
+
+  static GradientInst *create(SILModule &M, SILDebugLocation debugLoc,
+                              SILValue original,
+                              SILReverseAutoDiffIndices indices,
+                              SILGradientOptions options);
+
+  SILValue getOriginal() const { return Operands[0].get(); }
+
+  CanSILFunctionType getOriginalType() const {
+    return getOriginal()->getType().getAs<SILFunctionType>();
+  }
+
+  SILGradientOptions getOptions() const {
+    return Options;
+  }
+
+  bool isSeedable() const {
+    return Options.contains(SILGradientFlags::Seedable);
+  }
+
+  bool isPreservingResult() const {
+    return Options.contains(SILGradientFlags::PreservingResult);
+  }
+
+  bool isDelayed() const {
+    return Options.contains(SILGradientFlags::Delayed);
+  }
+
+  SILReverseAutoDiffIndices getIndices() const {
+    return Indices;
+  }
+
+  SILReverseAutoDiffConfiguration getConfiguration() const {
+    return { Indices, Options };
+  }
+
+  ArrayRef<Operand> getAllOperands() const {
+    return Operands.asArray();
+  }
+
+  MutableArrayRef<Operand> getAllOperands() {
+    return Operands.asArray();
+  }
+
+  static bool classof(const SILNode *N) {
+    return N->getKind() == SILNodeKind::GradientInst;
+  }
+};
+
 // This is defined out of line to work around the fact that this depends on
 // PartialApplyInst being defined, but PartialApplyInst is a subclass of
 // ApplyInstBase, so we can not place ApplyInstBase after it.
@@ -7957,6 +8040,103 @@ inline DestructureTupleInst *DestructureTupleResult::getParent() {
   auto *Parent = MultipleValueInstructionResult::getParent();
   return cast<DestructureTupleInst>(Parent);
 }
+
+/// SWIFT_ENABLE_TENSORFLOW
+/// A result for the graph_op instruction. See documentation for
+/// graph_op for more information.
+class GraphOperationResult final : public MultipleValueInstructionResult {
+public:
+  GraphOperationResult(unsigned Index, SILType Type,
+                       ValueOwnershipKind OwnershipKind)
+  : MultipleValueInstructionResult(ValueKind::GraphOperationResult, Index,
+                                   Type, OwnershipKind) {}
+
+  static bool classof(const SILNode *N) {
+    return N->getKind() == SILNodeKind::GraphOperationResult;
+  }
+
+  GraphOperationInst *getParent() {
+    auto *Parent = MultipleValueInstructionResult::getParent();
+    return cast<GraphOperationInst>(Parent);
+  };
+
+  const GraphOperationInst *getParent() const {
+    return const_cast<GraphOperationResult *>(this)->getParent();
+  }
+};
+
+/// SWIFT_ENABLE_TENSORFLOW
+/// A graph operation. This instruction will be extracted to a graph program
+/// via graph program extraction passes.
+class GraphOperationInst final
+  : public InstructionBase<
+               SILInstructionKind::GraphOperationInst,
+               MultipleValueInstruction>,
+    public MultipleValueInstructionTrailingObjects<
+               GraphOperationInst, GraphOperationResult,
+               InitialTrailingObjects<>,
+               FinalTrailingObjects<Operand>> {
+  friend TrailingObjects;
+
+  /// The name of the graph operation.
+  Identifier Name;
+  /// The number of operands.
+  unsigned NumOperands;
+  /// The attributes of the graph operation.
+  MutableArrayRef<GraphOperationAttribute> Attributes;
+
+  GraphOperationInst(SILModule &M, SILDebugLocation loc, Identifier name,
+                     ArrayRef<SILValue> arguments,
+                     ArrayRef<GraphOperationAttribute> attrs,
+                     ArrayRef<SILType> resultTypes,
+                     ArrayRef<ValueOwnershipKind> resultOwnerships);
+
+public:
+  using MultipleValueInstructionTrailingObjects::numTrailingObjects;
+  using MultipleValueInstructionTrailingObjects::totalSizeToAlloc;
+
+  ~GraphOperationInst();
+  static GraphOperationInst *create(SILModule &M, SILDebugLocation loc,
+                                    Identifier name,
+                                    ArrayRef<SILValue> arguments,
+                                    ArrayRef<GraphOperationAttribute> attrs,
+                                    ArrayRef<SILType> resultTypes);
+
+  Identifier getName() const { return Name; }
+  unsigned getNumOperands() const { return NumOperands; }
+  unsigned getNumAttributes() const { return Attributes.size(); }
+
+  unsigned numTrailingObjects(OverloadToken<Operand>) const {
+    return NumOperands;
+  }
+
+  ArrayRef<Operand> getAllOperands() const {
+    return { getTrailingObjects<Operand>(), NumOperands };
+  }
+
+  MutableArrayRef<Operand> getAllOperands() {
+    return { getTrailingObjects<Operand>(), NumOperands };
+  }
+
+  OperandValueArrayRef getArguments() const {
+    return OperandValueArrayRef(getAllOperands());
+  }
+  GraphOperationAttribute getAttribute(unsigned i) const;
+
+  ArrayRef<GraphOperationAttribute> getAttributes() const {
+    return Attributes;
+  }
+
+  MutableArrayRef<GraphOperationAttribute> getAttributes() {
+    return Attributes;
+  }
+
+  Optional<SymbolicValue> getAttributeNamed(StringRef name);
+
+  static bool classof(const SILNode *N) {
+    return N->getKind() == SILNodeKind::GraphOperationInst;
+  }
+};
 
 inline SILType *AllocRefInstBase::getTypeStorage() {
   // If the size of the subclasses are equal, then all of this compiles away.

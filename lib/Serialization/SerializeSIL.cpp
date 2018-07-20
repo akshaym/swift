@@ -44,6 +44,8 @@ using llvm::BCBlockRAII;
 
 static unsigned toStableStringEncoding(StringLiteralInst::Encoding encoding) {
   switch (encoding) {
+  // SWIFT_ENABLE_TENSORFLOW
+  case StringLiteralInst::Encoding::Bytes: return SIL_BYTES;
   case StringLiteralInst::Encoding::UTF8: return SIL_UTF8;
   case StringLiteralInst::Encoding::UTF16: return SIL_UTF16;
   case StringLiteralInst::Encoding::ObjCSelector: return SIL_OBJC_SELECTOR;
@@ -916,6 +918,10 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
                              S.addDeclBaseNameRef(BI->getName()),
                              Args);
     break;
+  }
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILInstructionKind::GraphOperationInst: {
+    llvm_unreachable("Unimplemented");
   }
   case SILInstructionKind::ApplyInst: {
     // Format: attributes such as transparent and number of substitutions,
@@ -2090,6 +2096,9 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   }
   case SILInstructionKind::MarkUninitializedBehaviorInst:
     llvm_unreachable("todo");
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILInstructionKind::GradientInst:
+    llvm_unreachable("not supported");
   }
   // Non-void values get registered in the value table.
   for (auto result : SI.getResults()) {

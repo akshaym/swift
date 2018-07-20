@@ -478,6 +478,10 @@ namespace {
     RValue visitAbstractClosureExpr(AbstractClosureExpr *E, SGFContext C);
     RValue visitInterpolatedStringLiteralExpr(InterpolatedStringLiteralExpr *E,
                                               SGFContext C);
+    // SWIFT_ENABLE_TENSORFLOW
+    RValue visitGradientExpr(GradientExpr *E, SGFContext C);
+    RValue visitValueAndGradientExpr(ValueAndGradientExpr *E, SGFContext C);
+    RValue visitAdjointExpr(AdjointExpr *E, SGFContext C);
     RValue visitObjectLiteralExpr(ObjectLiteralExpr *E, SGFContext C);
     RValue visitEditorPlaceholderExpr(EditorPlaceholderExpr *E, SGFContext C);
     RValue visitObjCSelectorExpr(ObjCSelectorExpr *E, SGFContext C);
@@ -520,6 +524,9 @@ namespace {
                                             SGFContext C);
     RValue visitUnevaluatedInstanceExpr(UnevaluatedInstanceExpr *E,
                                         SGFContext C);
+
+    // SWIFT_ENABLE_TENSORFLOW
+    RValue visitPoundAssertExpr(PoundAssertExpr *E, SGFContext C);
   };
 } // end anonymous namespace
 
@@ -1782,6 +1789,8 @@ static ManagedValue convertFunctionRepresentation(SILGenFunction &SGF,
     case SILFunctionType::Representation::Block:
       return SGF.emitBlockToFunc(loc, source, sourceFormalTy, resultFormalTy,
                                  resultTy);
+    // SWIFT_ENABLE_TENSORFLOW
+    case SILFunctionType::Representation::TensorFlow:
     case SILFunctionType::Representation::Method:
     case SILFunctionType::Representation::Closure:
     case SILFunctionType::Representation::ObjCMethod:
@@ -1811,6 +1820,8 @@ static ManagedValue convertFunctionRepresentation(SILGenFunction &SGF,
                                  resultTy);
     case SILFunctionType::Representation::Block:
       llvm_unreachable("should not try block-to-block repr change");
+      // SWIFT_ENABLE_TENSORFLOW
+    case SILFunctionType::Representation::TensorFlow:
     case SILFunctionType::Representation::Method:
     case SILFunctionType::Representation::Closure:
     case SILFunctionType::Representation::ObjCMethod:
@@ -1824,6 +1835,9 @@ static ManagedValue convertFunctionRepresentation(SILGenFunction &SGF,
     llvm_unreachable("should not do function conversion to thin");
   case AnyFunctionType::Representation::CFunctionPointer:
     llvm_unreachable("should not do C function pointer conversion here");
+  // SWIFT_ENABLE_TENSORFLOW
+  case AnyFunctionType::Representation::TensorFlow:
+    llvm_unreachable("should not do function conversion to TensorFlow");
   }
   llvm_unreachable("bad representation");
 }
@@ -1901,6 +1915,8 @@ RValue RValueEmitter::visitFunctionConversionExpr(FunctionConversionExpr *e,
   switch(srcRepTy->getRepresentation()) {
   case AnyFunctionType::Representation::Swift:
   case AnyFunctionType::Representation::Thin:
+  // SWIFT_ENABLE_TENSORFLOW
+  case AnyFunctionType::Representation::TensorFlow:
     // Source is native, so we can convert signature first.
     destTy = adjustFunctionType(destRepTy,
                                 srcTy->getRepresentation());
@@ -2771,9 +2787,130 @@ visitInterpolatedStringLiteralExpr(InterpolatedStringLiteralExpr *E,
   return visit(E->getSemanticExpr(), C);
 }
 
+/// SWIFT_ENABLE_TENSORFLOW
+static RValue emitGradientInst(RValueEmitter &RVE, const SGFContext &C,
+                               ReverseAutoDiffExpr *E,
+                               SILGradientOptions options = None) {
+  SILLocation loc(E);
+  auto *origExpr = E->getOriginalExpr();
+  auto origTy = origExpr->getType()->getAs<AnyFunctionType>();
+  ManagedValue origVal = RVE.visit(origExpr, C).getAsSingleValue(RVE.SGF, loc);
+  // Lower Swift parameters to SIL parameters.
+  auto diffParams = E->getParameters();
+  SmallVector<AutoDiffIndexParameter, 4> allParamIndices;
+  // If no differentiation parameters are specified, differentiation is done
+  // with respect to all of original's parameters.
+  if (E->getParameters().empty()) {
+    for (unsigned i : range(origTy->getNumParams()))
+      allParamIndices.push_back({ E->getStartLoc(), i });
+    diffParams = allParamIndices;
+  }
+  SmallVector<unsigned, 8> loweredParamIndices;
+  for (auto param : diffParams) {
+    auto silParamIndices =
+      RVE.SGF.SGM.getLoweredFunctionParameterIndex(param.index, origTy);
+    loweredParamIndices.append(silParamIndices.begin(), silParamIndices.end());
+  }
+  SILReverseAutoDiffIndices indices(/*sourceIndex*/ 0, loweredParamIndices);
+  auto gradInst = RVE.SGF.B.createGradient(loc, origVal.forward(RVE.SGF),
+                                           indices, options);
+  ManagedValue v = RVE.SGF.emitManagedRValueWithCleanup(gradInst);
+  return RValue(RVE.SGF, E, v);
+}
+
+RValue RValueEmitter::
+visitGradientExpr(GradientExpr *E, SGFContext C) {
+  return emitGradientInst(*this, C, E);
+}
+
+RValue RValueEmitter::
+visitValueAndGradientExpr(ValueAndGradientExpr *E, SGFContext C) {
+  return emitGradientInst(*this, C, E, SILGradientFlags::PreservingResult);
+}
+
+// SWIFT_ENABLE_TENSORFLOW
+RValue RValueEmitter::
+visitAdjointExpr(AdjointExpr *E, SGFContext C) {
+  ConcreteDeclRef adjointFunc = E->getAdjointFunction();
+  FuncDecl *adjointDecl = cast<FuncDecl>(adjointFunc.getDecl());
+  SILLocation loc(adjointDecl);
+  SILDeclRef adjointDeclRef(adjointDecl);
+
+  // If adjoint is an instance method, mark as curried.
+  if (adjointDecl->isInstanceMember()) {
+    adjointDeclRef = adjointDeclRef.asCurried();
+  }
+  auto adjointInfo = SGF.getConstantInfo(adjointDeclRef);
+
+  // Convert function ref to thick function type.
+  if (!adjointDecl->isStatic()) {
+    auto resultTy = E->getType()->getCanonicalType();
+    ManagedValue result =
+      SGF.emitClosureValue(loc, adjointDeclRef, resultTy,
+                           adjointFunc.getSubstitutions());
+    return RValue(SGF, loc, resultTy, result);
+  }
+  // Otherwise, apply metatype to static adjoint method.
+  SILValue ref = SGF.emitGlobalFunctionRef(loc, adjointDeclRef, adjointInfo);
+  auto subs = adjointFunc.getSubstitutions();
+  auto baseMeta = adjointInfo.SILFnType->substGenericArgs(SGF.SGM.M, subs)
+    ->getSelfParameter().getType();
+  auto metatype = SGF.B.createMetatype(loc, SGF.getLoweredType(baseMeta));
+  auto partialApplyTy = SGF.B.getPartialApplyResultType(
+    adjointInfo.getSILType(), 1, SGF.getModule(), subs,
+    ParameterConvention::Direct_Guaranteed);
+  auto apply = SGF.B.createPartialApply(loc, ref, ref->getType(),
+    subs, { metatype }, partialApplyTy);
+  ManagedValue adjointValue = SGF.emitManagedRValueWithCleanup(apply);
+  return RValue(SGF, E, adjointValue);
+}
+
 RValue RValueEmitter::
 visitObjectLiteralExpr(ObjectLiteralExpr *E, SGFContext C) {
-  return visit(E->getSemanticExpr(), C);
+  // SWIFT_ENABLE_TENSORFLOW
+  if (!E->isTFOp())
+    return visit(E->getSemanticExpr(), C);
+
+  // If this is a tensorflow operation, we have a bit more work to do: we emit
+  // a builtin instruction with the operation name and the attribute names
+  // name mangled together.
+  auto tuple = dyn_cast<TupleExpr>(E->getArg());
+
+  auto opNameArg = tuple ? tuple->getElement(0) : E->getArg();
+  opNameArg = opNameArg->getSemanticsProvidingExpr();
+  auto opName = cast<StringLiteralExpr>(opNameArg)->getValue();
+
+  std::string name = "__tfop_" + opName.str();
+  SmallVector<SILValue, 4> args;
+
+  // Attribute names are specified with keyword arguments, and inputs are
+  // unlabeled.  Add markers to the builtin name to mark the inputs and
+  // attributes, separated by commas.
+  if (tuple) {
+    for (unsigned i = 1, e = tuple->getNumElements(); i != e; ++i) {
+      if (tuple->getElementName(i).empty())
+        name += ",$in";
+      else
+        name += "," + tuple->getElementName(i).str().str();
+    }
+
+    // Emit the tensor arguments as well as the attribute values.
+    for (auto &elt : tuple->getElements().drop_front()) {
+      // Arguments of this builtin will be taken at +0 instead of +1, for
+      // consistency with the default calling convention of taking function
+      // parameters as @guaranteed instead of @owned.
+      // e.g. Say E represents #tfop("Add", x, x). x can be passed into this
+      // expression without having to do a strong_retain (or copy_value) first.
+      args.push_back(
+          SGF.emitRValueAsSingleValue(elt, SGFContext::AllowGuaranteedPlusZero)
+              .getValue());
+    }
+  }
+  auto &resultTL = SGF.getTypeLowering(E->getType());
+  auto resultTy = resultTL.getLoweredType();
+  auto res = SGF.B.createBuiltin(E, SGF.getASTContext().getIdentifier(name),
+                                 resultTy, {}, args);
+  return RValue(SGF, E, SGF.emitManagedRValueWithCleanup(res, resultTL));
 }
 
 RValue RValueEmitter::
@@ -4253,6 +4390,8 @@ static bool isVerbatimNullableTypeInC(SILModule &M, Type ty) {
       // Was already bridged.
       case FunctionTypeRepresentation::Swift:
       case FunctionTypeRepresentation::Thin:
+      // SWIFT_ENABLE_TENSORFLOW
+      case FunctionType::Representation::TensorFlow:
         return false;
       }
     }
@@ -4375,6 +4514,8 @@ static bool mayLieAboutNonOptionalReturn(SILModule &M, Expr *expr) {
       return true;
     case FunctionTypeRepresentation::Swift:
     case FunctionTypeRepresentation::Thin:
+    // SWIFT_ENABLE_TENSORFLOW
+    case FunctionTypeRepresentation::TensorFlow:
       return false;
     }
   }
@@ -5596,6 +5737,29 @@ RValue RValueEmitter::visitForeignObjectConversionExpr(
 RValue RValueEmitter::visitUnevaluatedInstanceExpr(UnevaluatedInstanceExpr *E,
                                                    SGFContext C) {
   llvm_unreachable("unevaluated_instance expression can never be evaluated");
+}
+
+// SWIFT_ENABLE_TENSORFLOW
+RValue RValueEmitter::visitPoundAssertExpr(PoundAssertExpr *E, SGFContext C) {
+  SILValue condition;
+  {
+    FullExpr scope(SGF.Cleanups, CleanupLocation(E));
+    condition =
+        SGF.emitRValueAsSingleValue(E->getCondition()).getUnmanagedValue();
+  }
+
+  // Sema forces conditions to have Builtin.i1 type.
+  assert(condition->getType().castTo<BuiltinIntegerType>()->isFixedWidth(1));
+
+  SILValue message = SGF.B.createStringLiteral(
+      E, E->getMessage(), StringLiteralInst::Encoding::UTF8);
+
+  auto resultType = SGF.getASTContext().TheEmptyTupleType;
+  SILValue result = SGF.B.createBuiltin(
+      E, SGF.getASTContext().getIdentifier("poundAssert"),
+      SGF.getLoweredType(resultType), {}, {condition, message});
+
+  return RValue(SGF, E, ManagedValue::forUnmanaged(result));
 }
 
 RValue SILGenFunction::emitRValue(Expr *E, SGFContext C) {

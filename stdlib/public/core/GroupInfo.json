@@ -144,6 +144,9 @@
       "FloatingPointParsing.swift",
       "FloatingPointTypes.swift"]}
   ],
+  "AutoDiff": [
+    "AutoDiff.swift",
+  ],
   "Optional": [
     "Optional.swift"
   ],

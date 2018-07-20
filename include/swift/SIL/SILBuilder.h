@@ -474,6 +474,14 @@ public:
                                                  beginApply));
   }
 
+  /// SWIFT_ENABLE_TENSORFLOW
+  GradientInst *createGradient(SILLocation loc, SILValue original,
+                               SILReverseAutoDiffIndices indices,
+                               SILGradientOptions options) {
+    return insert(GradientInst::create(getModule(), getSILDebugLocation(loc),
+                                       original, indices, options));
+  }
+
   BuiltinInst *createBuiltin(SILLocation Loc, Identifier Name, SILType ResultTy,
                              SubstitutionMap Subs,
                              ArrayRef<SILValue> Args) {
@@ -1355,6 +1363,14 @@ public:
   void emitShallowDestructureAddressOperation(
       SILLocation Loc, SILValue Operand,
       llvm::SmallVectorImpl<SILValue> &Result);
+
+  GraphOperationInst *createGraphOperation(
+      SILLocation loc, Identifier name, ArrayRef<SILValue> operands,
+      ArrayRef<GraphOperationAttribute> attrs, ArrayRef<SILType> resultTypes) {
+    return insert(GraphOperationInst::create(
+        getModule(), getSILDebugLocation(loc), name, operands, attrs,
+        resultTypes));
+  }
 
   ClassMethodInst *createClassMethod(SILLocation Loc, SILValue Operand,
                                      SILDeclRef Member, SILType MethodTy) {

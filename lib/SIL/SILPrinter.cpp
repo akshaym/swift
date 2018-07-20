@@ -21,6 +21,8 @@
 #include "swift/Basic/QuotedString.h"
 #include "swift/SIL/SILPrintContext.h"
 #include "swift/SIL/CFG.h"
+// SWIFT_ENABLE_TENSORFLOW
+#include "swift/SIL/SILConstants.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILCoverageMap.h"
 #include "swift/SIL/SILDebugScope.h"
@@ -1147,6 +1149,26 @@ public:
     *this << Ctx.getID(AI->getOperand());
   }
 
+  /// SWIFT_ENABLE_TENSORFLOW
+  void visitGradientInst(GradientInst *GI) {
+    auto indices = GI->getIndices();
+    *this << "[source " << indices.source << "] ";
+    if (!indices.parameters.empty()) {
+      *this << "[wrt ";
+      interleave(indices.parameters.set_bits(), [&](unsigned idx) {
+        *this << idx;
+      }, [&]{
+        *this << ", ";
+      });
+      *this << "] ";
+    }
+    if (GI->isSeedable())
+      *this << "[seedable] ";
+    if (GI->isPreservingResult())
+      *this << "[preserving_result] ";
+    *this << getIDAndType(GI->getOriginal());
+  }
+
   void visitFunctionRefInst(FunctionRefInst *FRI) {
     FRI->getReferencedFunction()->printName(PrintState.OS);
     *this << " : " << FRI->getType();
@@ -1165,6 +1187,111 @@ public:
     
     *this << ") : ";
     *this << BI->getType();
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  void visitSymbolicValue(SymbolicValue v) {
+    switch (v.getKind()) {
+    case SymbolicValue::Integer: {
+      APInt intValue = v.getIntegerValue();
+      *this << "i" << intValue.getBitWidth() << " " << intValue;
+      return;
+    }
+    case SymbolicValue::Float: {
+      APFloat floatValue = v.getFloatValue();
+      *this << "f" << APFloat::getSizeInBits(floatValue.getSemantics()) << " ";
+
+      APInt bits = floatValue.bitcastToAPInt();
+      *this << "0x" << bits.toString(16, /*Signed*/ false);
+      *this << " ";
+
+      SmallString<12> decimal;
+      floatValue.toString(decimal);
+      *this << "/* " << decimal << " */";
+      return;
+    }
+    case SymbolicValue::String:
+      *this << QuotedString(v.getStringValue());
+      return;
+    case SymbolicValue::Metatype:
+      *this << SILType::getPrimitiveObjectType(v.getMetatypeValue());
+      return;
+    case SymbolicValue::Function: {
+      auto function = v.getFunctionValue();
+      *this << "@" << function->getName();
+      *this << " : $" << function->getLoweredFunctionType();
+      return;
+    }
+    case SymbolicValue::Aggregate: {
+      *this << '(';
+      interleave(v.getAggregateValue(), [&](SymbolicValue element) {
+        visitSymbolicValue(element);
+      }, [&] {
+        *this << ", ";
+      });
+      *this << ')';
+      return;
+    }
+    case SymbolicValue::Enum:
+      *this << SILDeclRef(v.getEnumValue(), SILDeclRef::Kind::EnumElement);
+      return;
+    case SymbolicValue::EnumWithPayload:
+      *this << '(';
+      *this << SILDeclRef(v.getEnumValue(), SILDeclRef::Kind::EnumElement);
+      *this << ", ";
+      visitSymbolicValue(v.getEnumPayloadValue());
+      *this << ')';
+      return;
+    case SymbolicValue::Array: {
+      CanType elementType;
+      auto elements = v.getArrayValue(elementType);
+
+      *this << "[$" << elementType << ": ";
+      interleave(elements, [&](SymbolicValue element) {
+        visitSymbolicValue(element);
+      }, [&] {
+        *this << ", ";
+      });
+      *this << ']';
+      return;
+    }
+    case SymbolicValue::UninitMemory:
+    case SymbolicValue::Unknown:
+    case SymbolicValue::Address:
+      llvm_unreachable("Unimplemented SymbolicValue case");
+    }
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  void visitGraphOperationInst(GraphOperationInst *GI) {
+    *this << QuotedString(GI->getName().str());
+
+    *this << "(";
+    interleave(GI->getArguments(), [&](SILValue v) {
+      *this << getIDAndType(v);
+    }, [&] {
+      *this << ", ";
+    });
+    *this << ")";
+
+    if (GI->getNumAttributes()) {
+      *this << " {";
+      interleave(GI->getAttributes(), [&](GraphOperationAttribute attr) {
+        *this << attr.name.str();
+        *this << ": ";
+        visitSymbolicValue(attr.value);
+      }, [&] {
+        *this << ", ";
+      });
+      *this << "}";
+    }
+
+    *this << " : ";
+    interleave(GI->getResultTypes(), [&](SILType type) {
+      *this << type;
+    }, [&] {
+      *this << ", ";
+    });
   }
   
   void visitAllocGlobalInst(AllocGlobalInst *AGI) {
@@ -1203,6 +1330,8 @@ public:
   }
   static StringRef getStringEncodingName(StringLiteralInst::Encoding kind) {
     switch (kind) {
+    // SWIFT_ENABLE_TENSORFLOW
+    case StringLiteralInst::Encoding::Bytes: return "bytes ";
     case StringLiteralInst::Encoding::UTF8: return "utf8 ";
     case StringLiteralInst::Encoding::UTF16: return "utf16 ";
     case StringLiteralInst::Encoding::ObjCSelector: return "objc_selector ";
@@ -1211,8 +1340,18 @@ public:
   }
 
   void visitStringLiteralInst(StringLiteralInst *SLI) {
-    *this << getStringEncodingName(SLI->getEncoding())
-          << QuotedString(SLI->getValue());
+    *this << getStringEncodingName(SLI->getEncoding());
+
+    // SWIFT_ENABLE_TENSORFLOW
+    if (SLI->getEncoding() != StringLiteralInst::Encoding::Bytes) {
+      // FIXME: this isn't correct: this doesn't properly handle translating
+      // UTF16 into UTF8, and the SIL parser always parses as UTF8.
+      *this << QuotedString(SLI->getValue());
+      return;
+    }
+
+    // "Bytes" are always output in a hexadecimal form.
+    *this << '"' << llvm::toHex(SLI->getValue()) << '"';
   }
 
   static StringRef
@@ -2343,6 +2482,11 @@ void SILFunction::print(SILPrintContext &PrintCtx) const {
     OS << "[_specialize "; Attr->print(OS); OS << "] ";
   }
 
+  // SWIFT_ENABLE_TENSORFLOW
+  for (auto *Attr : getReverseDifferentiableAttrs()) {
+    OS << "[reverse_differentiable "; Attr->print(OS); OS << "] ";
+  }
+
   // TODO: Handle clang node owners which don't have a name.
   if (hasClangNode() && getClangNodeOwner()->hasName()) {
     OS << "[clang ";
@@ -2687,6 +2831,7 @@ void SILModule::print(SILPrintContext &PrintCtx, ModuleDecl *M,
     for (const Decl *D : topLevelDecls) {
       if (!WholeModuleMode && !(D->getDeclContext() == AssociatedDeclContext))
           continue;
+      // SWIFT_ENABLE_TENSORFLOW
       if ((isa<ValueDecl>(D) || isa<OperatorDecl>(D) ||
            isa<ExtensionDecl>(D) || isa<ImportDecl>(D)) &&
           !D->isImplicit()) {
@@ -3028,6 +3173,17 @@ void SILSpecializeAttr::print(llvm::raw_ostream &OS) const {
                },
                [&] { OS << ", "; });
   }
+}
+
+/// SWIFT_ENABLE_TENSORFLOW
+void SILReverseDifferentiableAttr::print(llvm::raw_ostream &OS) const {
+  auto indices = getIndices();
+  OS << "source " << indices.source << " wrt ";
+  interleave(indices.parameters.set_bits(),
+             [&](unsigned index) { OS << index; },
+             [&] { OS << ", "; });
+  if (!PrimalName.empty()) OS << " primal @" << PrimalName;
+  if (!AdjointName.empty()) OS << " adjoint @" << AdjointName;
 }
 
 //===----------------------------------------------------------------------===//

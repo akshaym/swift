@@ -52,6 +52,8 @@ getIndirectApplyAbstractionPattern(SILGenFunction &SGF,
   switch (fnType->getRepresentation()) {
   case FunctionTypeRepresentation::Swift:
   case FunctionTypeRepresentation::Thin:
+  // SWIFT_ENABLE_TENSORFLOW
+  case FunctionTypeRepresentation::TensorFlow:
     return pattern;
 
   case FunctionTypeRepresentation::CFunctionPointer:
@@ -1522,8 +1524,10 @@ static RValue emitStringLiteral(SILGenFunction &SGF, Expr *E, StringRef Str,
     TypeElts = TypeEltsArray;
     break;
 
+  // SWIFT_ENABLE_TENSORFLOW.
+  case StringLiteralInst::Encoding::Bytes:
   case StringLiteralInst::Encoding::ObjCSelector:
-    llvm_unreachable("Objective-C selectors cannot be formed here");
+    llvm_unreachable("these cannot be formed here");
   }
 
   CanType ty =

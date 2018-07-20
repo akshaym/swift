@@ -252,6 +252,8 @@ FORWARDING_OWNERSHIP_INST(UnconditionalCheckedCast)
 FORWARDING_OWNERSHIP_INST(Upcast)
 FORWARDING_OWNERSHIP_INST(MarkUninitialized)
 FORWARDING_OWNERSHIP_INST(UncheckedEnumData)
+// SWIFT_ENABLE_TENSORFLOW
+FORWARDING_OWNERSHIP_INST(Gradient)
 #undef FORWARDING_OWNERSHIP_INST
 
 ValueOwnershipKind
@@ -291,6 +293,12 @@ ValueOwnershipKind ValueOwnershipKindClassifier::visitDestructureStructResult(
 
 ValueOwnershipKind ValueOwnershipKindClassifier::visitDestructureTupleResult(
     DestructureTupleResult *Result) {
+  return Result->getOwnershipKind();
+}
+
+// SWIFT_ENABLE_TENSORFLOW
+ValueOwnershipKind ValueOwnershipKindClassifier::visitGraphOperationResult(
+    GraphOperationResult *Result) {
   return Result->getOwnershipKind();
 }
 
@@ -559,6 +567,15 @@ CONSTANT_OWNERSHIP_BUILTIN(Trivial, TSanInoutAccess)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, Swift3ImplicitObjCEntrypoint)
 CONSTANT_OWNERSHIP_BUILTIN(Unowned, ValueToBridgeObject)
 
+// SWIFT_ENABLE_TENSORFLOW
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, TensorFlowSend)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, TensorFlowReceive)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AutoDiffCreateTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AutoDiffPushToTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AutoDiffPopFromTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AutoDiffDestroyTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, PoundAssert)
+
 #undef CONSTANT_OWNERSHIP_BUILTIN
 
 // Check all of these...
@@ -580,6 +597,14 @@ UNOWNED_OR_TRIVIAL_DEPENDING_ON_RESULT(ZeroInitializer)
 
 ValueOwnershipKind
 ValueOwnershipKindClassifier::visitBuiltinInst(BuiltinInst *BI) {
+  // SWIFT_ENABLE_TENSORFLOW
+  if (BI->getName().str().startswith("__tfop")) {
+    assert(BI->getNumResults() == 1);
+    auto type = BI->getResults()[0]->getType();
+    return type.isVoid() ? ValueOwnershipKind::Trivial
+                         : ValueOwnershipKind::Owned;
+  }
+
   // For now, just conservatively say builtins are None. We need to use a
   // builtin in here to guarantee correctness.
   return ValueOwnershipKindBuiltinVisitor().visit(BI);

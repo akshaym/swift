@@ -19,6 +19,7 @@
 
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/TypeBuilder.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "swift/AST/Builtins.h"
 #include "swift/AST/Types.h"
@@ -113,6 +114,31 @@ static std::pair<SILType, const TypeInfo &>
 getLoweredTypeAndTypeInfo(IRGenModule &IGM, Type unloweredType) {
   auto lowered = IGM.getLoweredType(unloweredType);
   return {lowered, IGM.getTypeInfo(lowered)};
+}
+
+// SWIFT_ENABLE_TENSORFLOW
+// Injects printf + abort function calls to abort with an error message.
+static void abortOnTFOpBuiltin(IRGenFunction &IGF, llvm::StringRef errMessage) {
+  auto &llvmModule = IGF.IGM.Module;
+  auto &llvmContext = llvmModule.getContext();
+  auto printfFunc = llvmModule.getOrInsertFunction(
+      "printf", llvm::TypeBuilder<int(char *, ...), false>::get(llvmContext));
+  auto strConstant =
+      llvm::ConstantDataArray::getString(llvmContext, errMessage);
+  auto GVStr =
+      new llvm::GlobalVariable(llvmModule, strConstant->getType(), true,
+                               llvm::GlobalValue::InternalLinkage, strConstant);
+  llvm::Constant *zero = llvm::Constant::getNullValue(
+      llvm::IntegerType::getInt32Ty(llvmContext));
+  llvm::Constant *zeroes[] = {zero, zero};
+  llvm::Constant *strVal = llvm::ConstantExpr::getGetElementPtr(
+      GVStr->getValueType(), GVStr, zeroes, true);
+  IGF.Builder.CreateCall(printfFunc, {strVal});
+
+  auto abortFunc = llvmModule.getOrInsertFunction(
+      "abort", llvm::FunctionType::get(
+                   llvm::Type::getVoidTy(llvmContext), {}, false));
+  IGF.Builder.CreateCall(abortFunc, {});
 }
 
 /// emitBuiltinCall - Emit a call to a builtin function.
@@ -971,6 +997,85 @@ if (Builtin.ID == BuiltinValueKind::id) { \
         IGF.Builder.CreateBitCast(metatypeRHS, IGF.IGM.Int8PtrTy);
 
     out.add(IGF.Builder.CreateICmpEQ(metatypeLHSCasted, metatypeRHSCasted));
+    return;
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  // OpaqueValue *swift_autoDiffCreateTape(Metadata *type);
+  if (Builtin.ID == BuiltinValueKind::AutoDiffCreateTape) {
+    auto valueTy =
+      getLoweredTypeAndTypeInfo(
+        IGF.IGM, substitutions.getReplacementTypes().front());
+    auto *metadata =
+      IGF.emitTypeMetadataRef(valueTy.first.getSwiftRValueType());
+    out.add(IGF.Builder.CreateCall(IGF.IGM.getAutoDiffCreateTapeFn(),
+                                   { metadata }));
+    return;
+  }
+
+  // void swift_autoDiffDestroyTape(OpaqueValue *tape);
+  if (Builtin.ID == BuiltinValueKind::AutoDiffDestroyTape) {
+    auto tape = args.claimNext();
+    IGF.Builder.CreateCall(IGF.IGM.getAutoDiffDestroyTapeFn(), { tape });
+    return;
+  }
+
+  // void swift_autoDiffPushToTape(OpaqueValue *tape, OpaqueValue *value);
+  if (Builtin.ID == BuiltinValueKind::AutoDiffPushToTape) {
+    auto tape = args.claimNext();
+    auto value = args.claimNext();
+    // `id` argument may be discarded. It is used as a marker in SIL.
+    (void)args.claimAll();
+
+    // Create stack allocation and store value in it.
+    auto alloca = IGF.createAlloca(value->getType(),
+                                   IGF.IGM.getPointerAlignment());
+    IGF.Builder.CreateStore(value, alloca);
+    // Cast alloca to OpaqueValue * and call builtin.
+    auto pointer = IGF.Builder.CreatePointerCast(alloca.getAddress(),
+                                                 IGF.IGM.OpaquePtrTy);
+    IGF.Builder.CreateCall(IGF.IGM.getAutoDiffPushToTapeFn(),
+                           { tape, pointer });
+    return;
+  }
+
+  // OpaqueValue *swift_autoDiffPopFromTape(OpaqueValue *tape);
+  if (Builtin.ID == BuiltinValueKind::AutoDiffPopFromTape) {
+    auto tape = args.claimNext();
+    // `id` argument may be discarded. It is used as a marker in SIL.
+    (void)args.claimAll();
+
+    auto valueTy = getLoweredTypeAndTypeInfo(
+      IGF.IGM, substitutions.getReplacementTypes().front());
+    auto pointerTy = valueTy.second.getStorageType()->getPointerTo();
+
+    // Pop alloca from tape and cast to pointer type.
+    auto alloca = IGF.Builder.CreateCall(IGF.IGM.getAutoDiffPopFromTapeFn(),
+                                         { tape });
+    auto pointer = IGF.Builder.CreatePointerCast(alloca, pointerTy);
+    // Load value from pointer.
+    auto value = IGF.Builder.CreateLoad(pointer, IGF.IGM.getPointerAlignment());
+    out.add(value);
+    return;
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  if (FnId.str().startswith("__tfop")) {
+
+    // TFOp builtins are never actually used at runtime: they are always
+    // extracted out of the program to a TensorFlow graph.  However, they do
+    // make it here when building the TensorFlow module itself.  For those
+    // cases, we abort here with an error message.
+    const std::string errMessage = "!!! Compiler bug -- Tensor op builtin " +
+                              FnId.str().str() +
+                              " cannot be lowered to LLVM IR !!!\n";
+    abortOnTFOpBuiltin(IGF, errMessage.c_str());
+
+    (void)args.claimAll();
+    // Finally, we set up our explosion results full of undef values.
+    ExplosionSchema schema = IGF.getTypeInfo(resultType).getSchema();
+    for (auto &elt : schema)
+      out.add(llvm::UndefValue::get(elt.getScalarType()));
     return;
   }
 

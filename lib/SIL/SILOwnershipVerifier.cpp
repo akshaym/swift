@@ -100,6 +100,9 @@ static bool isOwnershipForwardingValueKind(SILNodeKind K) {
   case SILNodeKind::CheckedCastBranchInst:
   case SILNodeKind::DestructureStructInst:
   case SILNodeKind::DestructureTupleInst:
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILNodeKind::GradientInst:
+  case SILNodeKind::GraphOperationInst:
     return true;
   default:
     return false;
@@ -572,6 +575,9 @@ FORWARD_ANY_OWNERSHIP_INST(MarkUninitialized)
 FORWARD_ANY_OWNERSHIP_INST(UncheckedEnumData)
 FORWARD_ANY_OWNERSHIP_INST(DestructureStruct)
 FORWARD_ANY_OWNERSHIP_INST(DestructureTuple)
+// SWIFT_ENABLE_TENSORFLOW
+FORWARD_ANY_OWNERSHIP_INST(Gradient)
+FORWARD_ANY_OWNERSHIP_INST(GraphOperation)
 #undef FORWARD_ANY_OWNERSHIP_INST
 
 // An instruction that forwards a constant ownership or trivial ownership.
@@ -1284,6 +1290,15 @@ CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, ZExt)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, ZExtOrBitCast)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, ZeroInitializer)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Swift3ImplicitObjCEntrypoint)
+
+// SWIFT_ENABLE_TENSORFLOW
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, TensorFlowSend)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, TensorFlowReceive)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AutoDiffCreateTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AutoDiffPushToTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AutoDiffPopFromTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AutoDiffDestroyTape)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, PoundAssert)
 #undef CONSTANT_OWNERSHIP_BUILTIN
 
 // Builtins that should be lowered to SIL instructions so we should never see
@@ -1341,6 +1356,12 @@ BUILTINS_THAT_SHOULD_HAVE_BEEN_LOWERED_TO_SILINSTS(ProjectTailElems)
 
 OwnershipUseCheckerResult
 OwnershipCompatibilityUseChecker::visitBuiltinInst(BuiltinInst *BI) {
+  // SWIFT_ENABLE_TENSORFLOW
+  if (BI->getName().str().startswith("__tfop")) {
+    // TF op builtins take operands at +0.
+    return {true, UseLifetimeConstraint::MustBeLive};
+  }
+
   return OwnershipCompatibilityBuiltinUseChecker(*this).check(BI);
 }
 

@@ -15,6 +15,8 @@ add_swift_library(swiftAST STATIC
   ASTVerifier.cpp
   ASTWalker.cpp
   Attr.cpp
+  # SWIFT_ENABLE_TENSORFLOW
+  AutoDiff.cpp
   Availability.cpp
   AvailabilitySpec.cpp
   Builtins.cpp
@@ -53,6 +55,8 @@ add_swift_library(swiftAST STATIC
   Stmt.cpp
   SubstitutionMap.cpp
   SwiftNameTranslation.cpp
+  # SWIFT_ENABLE_TENSORFLOW
+  TensorFlow.cpp
   Type.cpp
   TypeCheckRequests.cpp
   TypeJoinMeet.cpp

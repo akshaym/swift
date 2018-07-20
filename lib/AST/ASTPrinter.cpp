@@ -3437,6 +3437,10 @@ public:
       case SILFunctionType::Representation::CFunctionPointer:
         Printer << "c";
         break;
+      // SWIFT_ENABLE_TENSORFLOW
+      case SILFunctionType::Representation::TensorFlow:
+        Printer << "tensorflow";
+        break;
       case SILFunctionType::Representation::Method:
         Printer << "method";
         break;
@@ -3479,6 +3483,10 @@ public:
         break;
       case SILFunctionType::Representation::CFunctionPointer:
         Printer << "c";
+        break;
+      // SWIFT_ENABLE_TENSORFLOW
+      case SILFunctionType::Representation::TensorFlow:
+        Printer << "tensorflow";
         break;
       case SILFunctionType::Representation::Method:
         Printer << "method";

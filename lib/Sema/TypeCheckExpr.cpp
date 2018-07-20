@@ -682,3 +682,144 @@ Expr *TypeChecker::foldSequence(SequenceExpr *expr, DeclContext *dc) {
 
   return Result;
 }
+
+/// SWIFT_ENABLE_TENSORFLOW
+/// Determines whether the specified type supports scalar differentiation.
+/// We say that a type supports scalar AD when it conforms to
+/// `FloatingPoint`.
+bool TypeChecker::isCompatibleWithScalarAutoDiff(Type type, DeclContext *DC) {
+  auto *floatingPointProto =
+    DC->getASTContext().getProtocol(KnownProtocolKind::FloatingPoint);
+  auto conf = conformsToProtocol(type, floatingPointProto, DC,
+                                 ConformanceCheckFlags::InExpression);
+  return conf.hasValue();
+}
+
+/// Determines whether the specified type supports vector differentiation.
+/// We say that a type supports vector AD when it conforms to
+/// `VectorNumeric` while its `ScalarElement` supports scalar AD.
+bool TypeChecker::isCompatibleWithVectorAutoDiff(Type type, DeclContext *DC) {
+  auto &ctx = DC->getASTContext();
+  auto *vectorNumericProto = ctx.getProtocol(KnownProtocolKind::VectorNumeric);
+  if (auto conf = conformsToProtocol(type, vectorNumericProto, DC,
+                                     ConformanceCheckFlags::InExpression)) {
+    auto scalarElementName = ctx.getIdentifier("ScalarElement");
+    auto assocTyDecl = cast<AssociatedTypeDecl>(
+      conf->getRequirement()->lookupDirect(scalarElementName).front());
+    auto assocTy = assocTyDecl->getDeclaredInterfaceType();
+    auto scalarTy = conf->getAssociatedType(type, assocTy);
+    return isCompatibleWithScalarAutoDiff(scalarTy, DC);
+  }
+  return false;
+}
+
+// SWIFT_ENABLE_TENSORFLOW
+// Returns the function declaration corresponding to the given function name and
+// lookup context. If the base type of the function is specified, member lookup
+// is performed. Otherwise, unqualified lookup is performed.
+// If the function declaration cannot be resolved, emits a diagnostic and
+// returns nullptr.
+FuncDecl *
+TypeChecker::lookupFuncDecl(
+    DeclName funcName, SourceLoc funcNameLoc, Type baseType,
+    DeclContext *lookupContext,
+    const std::function<bool(FuncDecl *)> &isValidFuncDecl,
+    const std::function<void()> &overloadDiagnostic,
+    const std::function<void()> &ambiguousDiagnostic,
+    const std::function<void()> &notFunctionDiagnostic,
+    NameLookupOptions lookupOptions,
+    const Optional<std::function<bool(FuncDecl *)>> &hasValidTypeCtx,
+    const Optional<std::function<void()>> &invalidTypeCtxDiagnostic) {
+
+  FuncDecl *resolvedFuncDecl = nullptr;
+
+  // Perform lookup.
+  LookupResult results;
+  if (baseType) {
+    results = lookupMember(lookupContext, baseType, funcName);
+  } else {
+    results =
+      lookupUnqualified(lookupContext, funcName, funcNameLoc, lookupOptions);
+
+    // If looking up an operator within a type context, look specifically within
+    // the type context.
+    // This tries to resolve unqualified operators, like `+`.
+    if (funcName.isOperator() && lookupContext->isTypeContext()) {
+      if (auto tmp = lookupMember(lookupContext,
+                                  lookupContext->getSelfTypeInContext(),
+                                  funcName))
+        results = tmp;
+    }
+    // Note: static methods are omitted from `TypeChecker.lookupUnqualified` in
+    // Swift 3. The code below is a workaround for resolving them.
+    //
+    // This is necessary because the stdlib is compiled with `-swift-version 3`
+    // for Swift 3 compatibility, and floating point types use the
+    // `@differentiable` attribute with static adjoint methods (such as
+    // `_adjointAdd`).
+    else if (lookupContext->getASTContext().isSwiftVersion3() &&
+             results.empty() && lookupContext->isTypeContext()) {
+      results = lookupMember(lookupContext,
+                             lookupContext->getSelfTypeInContext(),
+                             funcName);
+    }
+  }
+
+  // Initialize error flags.
+  bool notAFuncDecl = false;
+  bool wrongTypeContext = false;
+  bool ambiguousFuncDecl = false;
+  bool overloadNotFound = false;
+
+  // Filter lookup results.
+  for (auto choice : results) {
+    auto decl = choice.getValueDecl();
+    if (!decl) continue;
+
+    auto funcDecl = dyn_cast<FuncDecl>(decl);
+    if (!funcDecl) {
+      notAFuncDecl = true;
+      continue;
+    }
+    if (hasValidTypeCtx && !(*hasValidTypeCtx)(funcDecl)) {
+      wrongTypeContext = true;
+      continue;
+    }
+    if (!isValidFuncDecl(funcDecl)) {
+      overloadNotFound = true;
+      continue;
+    }
+    if (resolvedFuncDecl) {
+      ambiguousFuncDecl = true;
+      resolvedFuncDecl = nullptr;
+      break;
+    }
+    resolvedFuncDecl = funcDecl;
+  }
+  // If function declaration was resolved, return it.
+  if (resolvedFuncDecl) return resolvedFuncDecl;
+
+  // Otherwise, emit the appropriate diagnostic and return nullptr.
+  if (results.empty()) {
+    diagnose(funcNameLoc, diag::use_unresolved_identifier, funcName,
+             funcName.isOperator());
+    return nullptr;
+  }
+  if (ambiguousFuncDecl) {
+    ambiguousDiagnostic();
+    return nullptr;
+  }
+  if (wrongTypeContext) {
+    assert(invalidTypeCtxDiagnostic &&
+           "Type context diagnostic should've been specified");
+    (*invalidTypeCtxDiagnostic)();
+    return nullptr;
+  }
+  if (overloadNotFound) {
+    overloadDiagnostic();
+    return nullptr;
+  }
+  assert(notAFuncDecl && "Expected 'not a function' error");
+  notFunctionDiagnostic();
+  return nullptr;
+}

@@ -271,6 +271,7 @@ public func _getUnsafePointerToStoredProperties(_ x: AnyObject)
 @inlinable // FIXME(sil-serialize-all)
 @_transparent
 @_semantics("branchhint")
+@compilerEvaluable
 internal func _branchHint(_ actual: Bool, expected: Bool) -> Bool {
   return Bool(Builtin.int_expect_Int1(actual._value, expected._value))
 }
@@ -279,6 +280,7 @@ internal func _branchHint(_ actual: Bool, expected: Bool) -> Bool {
 @inlinable // FIXME(sil-serialize-all)
 @_transparent
 @_semantics("fastpath")
+@compilerEvaluable
 public func _fastPath(_ x: Bool) -> Bool {
   return _branchHint(x, expected: true)
 }
@@ -287,6 +289,7 @@ public func _fastPath(_ x: Bool) -> Bool {
 @inlinable // FIXME(sil-serialize-all)
 @_transparent
 @_semantics("slowpath")
+@compilerEvaluable
 public func _slowPath(_ x: Bool) -> Bool {
   return _branchHint(x, expected: false)
 }

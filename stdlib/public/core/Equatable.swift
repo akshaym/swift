@@ -189,6 +189,7 @@ extension Equatable {
   ///   - lhs: A value to compare.
   ///   - rhs: Another value to compare.
   @_transparent
+  @compilerEvaluable
   public static func != (lhs: Self, rhs: Self) -> Bool {
     return !(lhs == rhs)
   }

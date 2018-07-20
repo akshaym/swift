@@ -49,6 +49,8 @@ STATISTIC(NumDeserializedFunc, "Number of deserialized SIL functions");
 static Optional<StringLiteralInst::Encoding>
 fromStableStringEncoding(unsigned value) {
   switch (value) {
+  // SWIFT_ENABLE_TENSORFLOW
+  case SIL_BYTES: return StringLiteralInst::Encoding::Bytes;
   case SIL_UTF8: return StringLiteralInst::Encoding::UTF8;
   case SIL_UTF16: return StringLiteralInst::Encoding::UTF16;
   case SIL_OBJC_SELECTOR: return StringLiteralInst::Encoding::ObjCSelector;
@@ -1402,6 +1404,10 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
                                       Args);
     break;
   }
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILInstructionKind::GraphOperationInst: {
+    llvm_unreachable("Unimplemented");
+  }
   case SILInstructionKind::AllocGlobalInst: {
     // Format: Name and type. Use SILOneOperandLayout.
     Identifier Name = MF->getIdentifier(ValID);
@@ -1451,6 +1457,12 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
                       getSILType(Ty, (SILValueCategory)TyCategory)), OnStack);
     break;
   }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILInstructionKind::GradientInst: {
+    llvm_unreachable("not supported");
+  }
+
   case SILInstructionKind::DeallocPartialRefInst: {
     auto Ty = MF->getType(TyID);
     auto Ty2 = MF->getType(TyID2);

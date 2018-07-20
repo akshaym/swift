@@ -55,6 +55,19 @@ if(SWIFT_BUILD_STDLIB)
   add_subdirectory(stubs)
   add_subdirectory(core)
   add_subdirectory(SwiftOnoneSupport)
+  # SWIFT_ENABLE_TENSORFLOW
+  if(SWIFT_ENABLE_TENSORFLOW)
+    # TODO: Add TensorFlow support for iOS/Raspberry Pi.
+    add_subdirectory(CTensorFlow)
+    add_subdirectory(TensorFlow)
+  endif()
+endif()
+
+# SWIFT_ENABLE_TENSORFLOW
+find_package(PythonLibs 2.7 EXACT)
+if(SWIFT_BUILD_STDLIB AND PYTHONLIBS_FOUND)
+  add_subdirectory(CPython)
+  add_subdirectory(Python)
 endif()
 
 if(SWIFT_BUILD_STDLIB OR SWIFT_BUILD_REMOTE_MIRROR)

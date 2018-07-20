@@ -930,6 +930,16 @@ public:
   void visitPartialApplyInst(PartialApplyInst *i);
   void visitBuiltinInst(BuiltinInst *i);
 
+  // SWIFT_ENABLE_TENSORFLOW
+  void visitGradientInst(GradientInst *i) {
+    llvm_unreachable("gradient is not valid in canonical SIL");
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  void visitGraphOperationInst(GraphOperationInst *i) {
+    llvm_unreachable("graph_op is not valid in canonical SIL");
+  }
+
   void visitFunctionRefInst(FunctionRefInst *i);
   void visitAllocGlobalInst(AllocGlobalInst *i);
   void visitGlobalAddrInst(GlobalAddrInst *i);
@@ -2171,6 +2181,8 @@ Callee LoweredValue::getCallee(IRGenFunction &IGF,
       return getSwiftFunctionPointerCallee(IGF, functionValue, selfValue,
                                            std::move(calleeInfo), false);
 
+    // SWIFT_ENABLE_TENSORFLOW
+    case SILFunctionType::Representation::TensorFlow:
     case SILFunctionType::Representation::CFunctionPointer:
       assert(!selfValue && "C function pointer has self?");
       return getCFunctionPointerCallee(IGF, functionValue,
@@ -2225,6 +2237,8 @@ static CallEmission getCallEmissionForLoweredValue(IRGenSILFunction &IGF,
     break;
   }
 
+  // SWIFT_ENABLE_TENSORFLOW
+  case SILFunctionType::Representation::TensorFlow:
   case SILFunctionType::Representation::ObjCMethod:
   case SILFunctionType::Representation::Thick:
   case SILFunctionType::Representation::Block:
@@ -2435,6 +2449,8 @@ getPartialApplicationFunction(IRGenSILFunction &IGF, SILValue v,
   case LoweredValue::Kind::FunctionPointer: {
     llvm::Value *context = nullptr;
     switch (fnType->getRepresentation()) {
+    // SWIFT_ENABLE_TENSORFLOW
+    case SILFunctionTypeRepresentation::TensorFlow:
     case SILFunctionTypeRepresentation::CFunctionPointer:
     case SILFunctionTypeRepresentation::Block:
     case SILFunctionTypeRepresentation::ObjCMethod:
